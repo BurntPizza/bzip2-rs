@@ -1,0 +1,11 @@
+[package]
+name = "bzip2-rs"
+version = "0.1.0"
+authors = ["BurntPizza <xburntpizza@gmail.com>"]
+license = "MIT/Apache-2.0"
+
+[dependencies]
+
+[dev-dependencies]
+bzip2 = "0.3.2"
+proptest = "0.4.2"
