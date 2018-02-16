@@ -5,7 +5,93 @@ extern crate bzip2;
 #[macro_use]
 extern crate proptest;
 
+pub type Bwt = (Vec<u8>, u32);
 
+pub fn bwt(data: &mut [u8]) -> u32 {
+    unimplemented!()
+}
+
+pub fn ibwt(data: &mut [u8], start: u32) {
+    let n = data.len();
+    if n == 0 { return; }
+
+
+}
+
+pub fn sorted(data: &[u8]) -> Vec<u8> {
+    let mut counts = [0u32; 256];
+
+    for i in 0..data.len() {
+        counts[data[i] as usize] += 1;
+    }
+
+    unsafe {
+        let mut output = Vec::with_capacity(data.len());
+        output.set_len(data.len());
+        let mut ptr: *mut u8 = output.as_mut_ptr();
+
+        for i in 0..256 {
+            let count = counts[i];
+            std::ptr::write_bytes(ptr, i as u8, count as usize);
+            ptr = ptr.offset(count as isize);
+        }
+
+        output
+    }
+}
+
+#[cfg(test)]
+pub fn bwt_ref(data: &mut [u8]) -> u32 {
+    use std::collections::VecDeque;
+
+    if data.is_empty() {
+        return 0;
+    }
+
+    let n = data.len();
+    let mut matrix = Vec::with_capacity(n);
+
+    let mut row: VecDeque<u8> = data.iter().cloned().collect();;
+    for _ in 0..n {
+        let b = row.pop_back().unwrap();
+        row.push_front(b);
+        matrix.push(row.clone());
+    }
+    debug_assert_eq!(matrix.len(), n);
+    matrix.sort();
+
+    let idx = matrix.iter().position(|row| &*row.iter().cloned().collect::<Vec<_>>() == data).unwrap();
+
+    for (c, d) in matrix.into_iter().map(|row| row[row.len() - 1]).zip(data.iter_mut()) {
+        *d = c;
+    }
+
+    idx as u32
+}
+
+#[cfg(test)]
+pub fn ibwt_ref(data: &mut [u8], start: u32) {
+    use std::collections::VecDeque;
+
+    if data.is_empty() {
+        return;
+    }
+
+    let n = data.len();
+
+    let mut matrix = (0..n).map(|_| VecDeque::with_capacity(n)).collect::<Vec<_>>();
+
+    for _ in 0..n {
+        for (row, ch) in matrix.iter_mut().zip(&mut data[..]) {
+            row.push_front(*ch);
+        }
+        matrix.sort();
+    }
+
+    for (c, d) in matrix[start as usize].iter().zip(data) {
+        *d = *c;
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -17,93 +103,32 @@ mod tests {
 
     use *;
 
-    type Bwt = (Vec<u8>, u32);
-
-    fn bwt_ref(input: &[u8]) -> Bwt {
-        use std::collections::VecDeque;
-
-        if input.is_empty() {
-            return (vec![], 0);
-        }
-
-        let mut matrix = Vec::with_capacity(input.len());
-
-        let mut row: VecDeque<u8> = input.iter().cloned().collect();;
-        for i in 0..input.len() {
-            let b = row.pop_back().unwrap();
-            row.push_front(b);
-            matrix.push(row.clone());
-        }
-        debug_assert_eq!(matrix.len(), input.len());
-        matrix.sort();
-
-        let idx = matrix.iter().position(|row| &*row.iter().cloned().collect::<Vec<_>>() == input).unwrap();
-        let mut last_col = matrix.into_iter().map(|row| row[row.len() - 1]).collect();
-
-        (last_col, idx as u32)
-    }
-
-    fn ibwt_ref(bwt: Bwt) -> Vec<u8> {
-        use std::collections::VecDeque;
-
-        let (last_col, idx) = bwt;
-        let n = last_col.len();
-
-        if last_col.is_empty() {
-            return vec![];
-        }
-
-        let mut matrix = (0..n).map(|_| VecDeque::with_capacity(n)).collect::<Vec<_>>();
-
-        for _ in 0..n {
-            for (row, ch) in matrix.iter_mut().zip(&last_col) {
-                row.push_front(*ch);
-            }
-            matrix.sort();
-        }
-
-        std::mem::replace(&mut matrix[idx as usize], Default::default()).into()
-    }
-    
     proptest! {
         #[test]
         fn bwt_reference_round_trip(ref data in bytes_regex(".*").unwrap()) {
-            let bwt = bwt_ref(&data[..]);
-            let round_trip = ibwt_ref(bwt);
-            prop_assert_eq!(data, &round_trip)
+            let mut scratch = data.clone();
+            let idx = bwt_ref(&mut scratch[..]);
+            ibwt_ref(&mut scratch[..], idx);
+            prop_assert_eq!(&scratch[..], &data[..])
+        }
+
+        #[test]
+        fn counting_sort(ref data in bytes_regex(".*").unwrap()) {
+            let c_sorted = sorted(&data[..]);
+            let mut std_sorted = data.to_owned();
+            std_sorted.sort_unstable();
+            prop_assert_eq!(c_sorted, std_sorted);
         }
     }
 
-    // proptest! {
-    //     #[test]
-    //     fn test(ref data in bytes_regex(".*").unwrap()) {
-    //         let enc = ReadEncoder::new(&data[..]);
-    //         let mut bz = BzEncoder::new(&data[..], Compression::Best);
-    //         let mut out = vec![];
-    //         let mut bz_out = vec![];
-    //         enc.read_to_end(&mut out).unwrap();
-    //         bz.read_to_end(&mut bz_out).unwrap();
-    //         assert_eq!(out, bz_out);
-
-    //         let mut dec = ReadDecoder::new(&out[..]);
-    //         let mut bz_dec = BzDecoder::new(&bz_out[..]);
-    //         let mut round_trip = vec![];
-    //         let mut bz_round_trip = vec![];
-    //         dec.read_to_end(&mut round_trip).unwrap();
-    //         bz_dec.read_to_end(&mut bz_round_trip).unwrap();
-    //         assert_eq!(round_trip, bz_round_trip);
-    //         assert_eq!(&data[..], &round_trip[..]);
-    //     }
+    // #[test]
+    // fn it_works() {
+    //     let data = "Hello World!".as_bytes();
+    //     let mut encoder = BzEncoder::new(data, Compression::Best);
+    //     let mut compressed = vec![];
+    //     encoder.read_to_end(&mut compressed).unwrap();
+    //     println!("raw: {:?}", compressed);
+    //     println!("hex: {}", compressed.iter().map(|b| format!("{:X}", b)).collect::<String>());
+    //     println!("ascii: {}", compressed.iter().map(|b| format!("{}", (*b as char).escape_default())).collect::<String>());
     // }
-
-    #[test]
-    fn it_works() {
-        let data = "Hello World!".as_bytes();
-        let mut encoder = BzEncoder::new(data, Compression::Best);
-        let mut compressed = vec![];
-        encoder.read_to_end(&mut compressed).unwrap();
-        println!("raw: {:?}", compressed);
-        println!("hex: {}", compressed.iter().map(|b| format!("{:X}", b)).collect::<String>());
-        println!("ascii: {}", compressed.iter().map(|b| format!("{}", (*b as char).escape_default())).collect::<String>());
-    }
 }
