@@ -5,6 +5,9 @@ extern crate bzip2;
 #[macro_use]
 extern crate proptest;
 
+use std::cmp::Ordering;
+use std::cmp::Ordering::*;
+
 pub fn bwt(data: &[u8]) -> (Vec<u8>, u32) {
     let n = data.len();
     if n == 0 { return (vec![], 0); }
@@ -87,8 +90,6 @@ pub fn naive_matrix_sort(data: &[u8]) -> Vec<u32> {
     let mut matrix = (0..n as u32).collect::<Vec<_>>();
 
     matrix.sort_unstable_by(|a, b| {
-        use std::cmp::Ordering;
-
         let mut a = *a as usize;
         let mut b = *b as usize;
 
@@ -96,54 +97,58 @@ pub fn naive_matrix_sort(data: &[u8]) -> Vec<u32> {
             if a >= n { a = 0; }
             if b >= n { b = 0; }
             match data[a].cmp(&data[b]) {
-                Ordering::Equal => {}
+                Equal => {}
                 non_eq => return non_eq,
             }
             a += 1;
             b += 1;
         }
 
-        Ordering::Equal
+        Equal
     });
 
     matrix
 }
 
 pub fn matrix_sort(data: &[u8]) -> Vec<usize> {
-    macro_rules! ix {
-        ($data:ident[$a:ident[$i:expr] + $d:expr]) => {{
-            let mut idx = $a[$i] + $d;
-            if idx >= $data.len() { idx -= $data.len(); }
-            $data[idx]
-        }};
+    type Ptr = *const u8;
+
+    #[inline]
+    fn ix(a: &[Ptr], i: usize, d: isize, n: usize, b: usize) -> u8 {
+        unsafe {
+            let mut ptr = a[i].offset(d) as usize;
+            if ptr >= b { ptr -= n; }
+            *(ptr as Ptr)
+        }
     }
 
-    fn pivot(a: &mut [usize], d: usize, data: &[u8]) -> u8 {
-        let li = 0;
-        let mi = a.len() / 2;
-        let ri = a.len() - 1;
-        if ix!(data[a[ri] + d]) < ix!(data[a[li] + d]) {
-            a.swap(li, ri);
-        }
-        if ix!(data[a[mi] + d]) < ix!(data[a[li] + d]) {
-            a.swap(mi, li);
-        }
-        if ix!(data[a[ri] + d]) < ix!(data[a[mi] + d]) {
-            a.swap(ri, mi);
+    fn pivot(a: &mut [Ptr], d: isize, s: usize, b: usize) -> u8 {
+        fn median(a: u8, b: u8, c: u8) -> u8 {
+            a.max(b).min(c)
         }
 
-        ix!(data[a[mi] + d])
+        fn med3(a: &mut [Ptr], d: isize, s: usize, b: usize) -> u8 {
+            let li = 0;
+            let mi = a.len() / 2;
+            let ri = a.len() - 1;
+
+            let l = ix(a, li, d, s, b);
+            let m = ix(a, mi, d, s, b);
+            let r = ix(a, ri, d, s, b);
+
+            median(l, m, r)
+        }
+
+        med3(a, d, s, b)
     }
 
-    fn partition(a: &mut [usize], d: usize, p: u8, data: &[u8]) -> (usize, usize) {
-        use std::cmp::Ordering::*;
-
+    fn partition(a: &mut [Ptr], d: isize, p: u8, s: usize, e: usize) -> (usize, usize) {
         let mut i = 0;
         let mut j = 0;
         let mut n = a.len() - 1;
 
         while j <= n {
-            match ix!(data[a[j] + d]).cmp(&p) {
+            match (ix(a, j, d, s, e)).cmp(&p) {
                 Less => {
                     a.swap(i, j);
                     i += 1;
@@ -162,20 +167,51 @@ pub fn matrix_sort(data: &[u8]) -> Vec<usize> {
         (i, j)
     }
 
-    fn sort_(a: &mut [usize], d: usize, data: &[u8]) {
-        if a.len() <= 1 || d >= data.len() { return; }
-        let p = pivot(a, d, data);
-        let (i, j) = partition(a, d, p, data);
-        sort_(&mut a[..i], d, data);
-        sort_(&mut a[i..j], d + 1, data);
-        sort_(&mut a[j..], d, data);
+    fn isort(a: &mut [Ptr], d: isize, s: usize, e: usize) {
+
+        fn cmp(a: Ptr, b: Ptr, mut d: isize, s: usize, e: usize) -> Ordering {
+            while (d as usize) < s {
+                match ix(&mut [a], 0, d, s, e).cmp(&ix(&mut [b], 0, d, s, e)) {
+                    Equal => {}
+                    non_eq => return non_eq,
+                }
+                d += 1;
+            }
+
+            Equal
+        }
+
+        let mut i = 1;
+        while i < a.len() {
+            let mut j = i;
+            while j > 0 && cmp(a[j - 1], a[j], d, s, e) == Greater {
+                a.swap(j, j - 1);
+                j -= 1;
+            }
+            i += 1;
+        }
     }
 
-    let mut matrix = (0..data.len()).collect::<Vec<_>>();
+    fn sort_(a: &mut [Ptr], d: isize, s: usize, e: usize) {
+        if d as usize >= s { return; }
+        if a.len() < 10 { return isort(a, d, s, e) }
+        let p = pivot(a, d, s, e);
+        let (i, j) = partition(a, d, p, s, e);
+        sort_(&mut a[..i], d, s, e);
+        sort_(&mut a[i..j], d + 1, s, e);
+        sort_(&mut a[j..], d, s, e);
+    }
 
-    sort_(&mut matrix[..], 0, data);
-
-    matrix
+    unsafe {
+        let n = data.len();
+        let base = data.as_ptr();
+        let mut matrix = (0..n).map(|i| base.offset(i as isize)).collect::<Vec<_>>();
+        sort_(&mut matrix[..], 0, n, base as usize + n);
+        for ptr in matrix.iter_mut() {
+            *ptr = (*ptr as usize - (base as usize)) as Ptr;
+        }
+        std::mem::transmute(matrix)
+    }
 }
 
 #[cfg(test)]
