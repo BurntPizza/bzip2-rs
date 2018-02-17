@@ -101,7 +101,7 @@ pub fn sorted(data: &[u8], counts: &[u32; 256]) -> Vec<u8> {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(test)]
 pub fn bwt_ref(data: &[u8]) -> (Vec<u8>, u32) {
     use std::collections::VecDeque;
 
@@ -127,7 +127,7 @@ pub fn bwt_ref(data: &[u8]) -> (Vec<u8>, u32) {
     (last_col, idx as u32)
 }
 
-#[cfg(any(test, feature = "bench"))]
+#[cfg(test)]
 pub fn ibwt_ref(data: &[u8], start: u32) -> Vec<u8> {
     use std::collections::VecDeque;
 
