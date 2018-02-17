@@ -16,11 +16,14 @@ pub fn bwt(data: &[u8]) -> (Vec<u8>, u32) {
     let matrix = matrix_sort(data);
 
     let mut idx = 0;
+    let last_idx = data.as_ptr() as usize + n;
     let last_col: Vec<u8> = matrix.into_iter().enumerate().map(|(i, row)| {
-        if row == 0 {
+        if row as usize == data.as_ptr() as usize {
             idx = i as u32;
         }
-        data[(row as usize + n - 1) % n]
+        let mut row = row as usize + n - 1;
+        if row >= last_idx { row -= n; }
+        unsafe { *(row as *const u8) }
     }).collect();
 
     (last_col, idx)
@@ -110,7 +113,7 @@ pub fn naive_matrix_sort(data: &[u8]) -> Vec<u32> {
     matrix
 }
 
-pub fn matrix_sort(data: &[u8]) -> Vec<usize> {
+pub fn matrix_sort(data: &[u8]) -> Vec<*const u8> {
     type Ptr = *const u8;
 
     #[inline]
@@ -207,10 +210,8 @@ pub fn matrix_sort(data: &[u8]) -> Vec<usize> {
         let base = data.as_ptr();
         let mut matrix = (0..n).map(|i| base.offset(i as isize)).collect::<Vec<_>>();
         sort_(&mut matrix[..], 0, n, base as usize + n);
-        for ptr in matrix.iter_mut() {
-            *ptr = (*ptr as usize - (base as usize)) as Ptr;
-        }
-        std::mem::transmute(matrix)
+
+        matrix
     }
 }
 
@@ -315,7 +316,7 @@ mod tests {
 
         #[test]
         fn test_multi_key_quicksort(ref data in bytes_regex(".+").unwrap()) {
-            let test_data = matrix_sort(data).into_iter().map(|e| data[e as usize]).collect::<Vec<_>>();
+            let test_data = matrix_sort(data).into_iter().map(|e| unsafe {*e}).collect::<Vec<_>>();
             let reference_data = naive_matrix_sort(data).into_iter().map(|e| data[e as usize]).collect::<Vec<_>>();;
             prop_assert_eq!(test_data, reference_data);
         }
