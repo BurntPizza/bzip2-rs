@@ -21,15 +21,34 @@ fn bench_bwt(b: &mut Bencher, size: &usize) {
     })
 }
 
-fn main() {
-    Criterion::default()
-        .bench("ibwt", ParameterizedBenchmark::new("ibwt", bench_ibwt, vec![1000, 10_000])
-               .throughput(|n| Throughput::Bytes(*n as u32)))
-        .bench("bwt", ParameterizedBenchmark::new("bwt", bench_bwt, vec![100, 1000])
-               .throughput(|n| Throughput::Bytes(*n as u32)));
-        ;
+fn bench_naive_matrix_sort(b: &mut Bencher, size: &usize) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+
+    b.iter(|| {
+        bzip2_rs::naive_matrix_sort(&data[..])
+    })
 }
 
+fn bench_matrix_sort(b: &mut Bencher, size: &usize) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+
+    b.iter(|| {
+        bzip2_rs::matrix_sort(&data[..])
+    })
+}
+
+fn main() {
+    Criterion::default()
+        .bench("bwt", ParameterizedBenchmark::new("bwt", bench_bwt, vec![100, 1000])
+               .throughput(|n| Throughput::Bytes(*n as u32)))
+        // .bench("ibwt", ParameterizedBenchmark::new("ibwt", bench_ibwt, vec![1000, 10_000])
+        //        .throughput(|n| Throughput::Bytes(*n as u32)))
+        // .bench("naive_matrix_sort", ParameterizedBenchmark::new("naive_matrix_sort", bench_naive_matrix_sort, vec![100, 1000])
+        //        .throughput(|n| Throughput::Bytes(*n as u32)))
+        .bench("matrix_sort", ParameterizedBenchmark::new("matrix_sort", bench_matrix_sort, vec![100, 1000])
+               .throughput(|n| Throughput::Bytes(*n as u32)))
+        ;
+}
 
 const TEXT: &[u8] = b"
 Lorem ipsum dolor sit amet, consectetur adipiscing elit.

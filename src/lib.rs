@@ -8,29 +8,10 @@ extern crate proptest;
 pub fn bwt(data: &[u8]) -> (Vec<u8>, u32) {
     let n = data.len();
     if n == 0 { return (vec![], 0); }
+    assert!(n <= std::u32::MAX as usize);
 
-    let mut matrix: Vec<u32> = (0..n as u32).collect();
-    matrix.sort_unstable_by(|a, b| {
-        use std::cmp::Ordering;
+    let matrix = matrix_sort(data);
 
-        let mut a = *a as usize;
-        let mut b = *b as usize;
-
-        for _ in 0..n {
-            if a >= n { a = 0; }
-            if b >= n { b = 0; }
-            match data[a].cmp(&data[b]) {
-                Ordering::Equal => {}
-                non_eq => return non_eq,
-            }
-            a += 1;
-            b += 1;
-        }
-
-        Ordering::Equal
-    });
-
-    // let idx = matrix.iter().position(|row| *row == 0).unwrap();
     let mut idx = 0;
     let last_col: Vec<u8> = matrix.into_iter().enumerate().map(|(i, row)| {
         if row == 0 {
@@ -99,6 +80,102 @@ pub fn sorted(data: &[u8], counts: &[u32; 256]) -> Vec<u8> {
 
         output
     }
+}
+
+pub fn naive_matrix_sort(data: &[u8]) -> Vec<u32> {
+    let n = data.len();
+    let mut matrix = (0..n as u32).collect::<Vec<_>>();
+
+    matrix.sort_unstable_by(|a, b| {
+        use std::cmp::Ordering;
+
+        let mut a = *a as usize;
+        let mut b = *b as usize;
+
+        for _ in 0..n {
+            if a >= n { a = 0; }
+            if b >= n { b = 0; }
+            match data[a].cmp(&data[b]) {
+                Ordering::Equal => {}
+                non_eq => return non_eq,
+            }
+            a += 1;
+            b += 1;
+        }
+
+        Ordering::Equal
+    });
+
+    matrix
+}
+
+pub fn matrix_sort(data: &[u8]) -> Vec<usize> {
+    macro_rules! ix {
+        ($data:ident[$a:ident[$i:expr] + $d:expr]) => {{
+            let mut idx = $a[$i] + $d;
+            if idx >= $data.len() { idx -= $data.len(); }
+            $data[idx]
+        }};
+    }
+
+    fn pivot(a: &mut [usize], d: usize, data: &[u8]) -> u8 {
+        let li = 0;
+        let mi = a.len() / 2;
+        let ri = a.len() - 1;
+        if ix!(data[a[ri] + d]) < ix!(data[a[li] + d]) {
+            a.swap(li, ri);
+        }
+        if ix!(data[a[mi] + d]) < ix!(data[a[li] + d]) {
+            a.swap(mi, li);
+        }
+        if ix!(data[a[ri] + d]) < ix!(data[a[mi] + d]) {
+            a.swap(ri, mi);
+        }
+
+        ix!(data[a[mi] + d])
+    }
+
+    fn partition(a: &mut [usize], d: usize, p: u8, data: &[u8]) -> (usize, usize) {
+        use std::cmp::Ordering::*;
+
+        let mut i = 0;
+        let mut j = 0;
+        let mut n = a.len() - 1;
+
+        while j <= n {
+            match ix!(data[a[j] + d]).cmp(&p) {
+                Less => {
+                    a.swap(i, j);
+                    i += 1;
+                    j += 1;
+                }
+                Equal => {
+                    j += 1;
+                }
+                Greater => {
+                    a.swap(j, n);
+                    n -= 1;
+                }
+            }
+        }
+
+        (i, j)
+    }
+
+    fn sort_(a: &mut [usize], d: usize, data: &[u8]) {
+        if a.len() <= 1 || d >= data.len() { return; }
+        let p = pivot(a, d, data);
+        let (i, j) = partition(a, d, p, data);
+        sort_(&mut a[..i], d, data);
+        sort_(&mut a[i..j], d + 1, data);
+        sort_(&mut a[j..], d, data);
+    }
+
+    let mut matrix = (0..data.len()).collect::<Vec<_>>();
+
+    sort_(&mut matrix[..], 0, data);
+
+    matrix
 }
 
 #[cfg(test)]
@@ -198,6 +275,13 @@ mod tests {
             let mut std_sorted = data.to_owned();
             std_sorted.sort_unstable();
             prop_assert_eq!(c_sorted, std_sorted);
+        }
+
+        #[test]
+        fn test_multi_key_quicksort(ref data in bytes_regex(".+").unwrap()) {
+            let test_data = matrix_sort(data).into_iter().map(|e| data[e as usize]).collect::<Vec<_>>();
+            let reference_data = naive_matrix_sort(data).into_iter().map(|e| data[e as usize]).collect::<Vec<_>>();;
+            prop_assert_eq!(test_data, reference_data);
         }
     }
 
