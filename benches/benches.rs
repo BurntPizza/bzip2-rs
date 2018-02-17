@@ -4,16 +4,30 @@ extern crate criterion;
 
 use criterion::{Bencher, Criterion, ParameterizedBenchmark, Throughput};
 
-fn bench_sorted(b: &mut Bencher, size: &usize) {
+fn bench_ibwt(b: &mut Bencher, size: &usize) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+    let (transformed, start) = bzip2_rs::bwt(&data[..]);
+
+    b.iter(|| {
+        bzip2_rs::ibwt(&transformed[..], start)
+    })
+}
+
+fn bench_bwt(b: &mut Bencher, size: &usize) {
     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
 
-    b.iter(|| bzip2_rs::sorted(&data[..]));
+    b.iter(|| {
+        bzip2_rs::bwt(&data[..])
+    })
 }
 
 fn main() {
     Criterion::default()
-        .bench("sorted", ParameterizedBenchmark::new("sorted", bench_sorted, vec![10, 100, 1000, 10_000, 100_000, 1_000_000])
-        .throughput(|n| Throughput::Bytes(*n as u32)));
+        .bench("ibwt", ParameterizedBenchmark::new("ibwt", bench_ibwt, vec![1000, 10_000])
+               .throughput(|n| Throughput::Bytes(*n as u32)))
+        .bench("bwt", ParameterizedBenchmark::new("bwt", bench_bwt, vec![100, 1000])
+               .throughput(|n| Throughput::Bytes(*n as u32)));
+        ;
 }
 
 
