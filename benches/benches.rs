@@ -37,16 +37,39 @@ fn bench_matrix_sort(b: &mut Bencher, size: &usize) {
     })
 }
 
+fn bench_initial_rle_encode(b: &mut Bencher, size: &usize) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+
+    b.iter(|| {
+        bzip2_rs::rle::initial_encode(&data[..])
+    })
+}
+
+fn bench_initial_rle_decode(b: &mut Bencher, size: &usize) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+    let data: Vec<u8> = bzip2_rs::initial_rle_encode(&data);
+
+    b.iter(|| {
+        bzip2_rs::rle::initial_decode(&data[..])
+    })
+}
+
 fn main() {
     Criterion::default()
-        .bench("bwt", ParameterizedBenchmark::new("bwt", bench_bwt, vec![100, 1000])
+        .bench("initial_rle_encode", ParameterizedBenchmark::new("initial_rle_encode", bench_initial_rle_encode, vec![100_000])
                .throughput(|n| Throughput::Bytes(*n as u32)))
+        // .bench("initial_rle_decode", ParameterizedBenchmark::new("initial_rle_decode", bench_initial_rle_decode, vec![100_000])
+        //        .throughput(|n| Throughput::Bytes(*n as u32)))
+
+        // .bench("bwt", ParameterizedBenchmark::new("bwt", bench_bwt, vec![100, 1000])
+        //        .throughput(|n| Throughput::Bytes(*n as u32)))
         // .bench("ibwt", ParameterizedBenchmark::new("ibwt", bench_ibwt, vec![1000, 10_000])
         //        .throughput(|n| Throughput::Bytes(*n as u32)))
+
         // .bench("naive_matrix_sort", ParameterizedBenchmark::new("naive_matrix_sort", bench_naive_matrix_sort, vec![100, 1000])
         //        .throughput(|n| Throughput::Bytes(*n as u32)))
-        .bench("matrix_sort", ParameterizedBenchmark::new("matrix_sort", bench_matrix_sort, vec![100, 1000])
-               .throughput(|n| Throughput::Bytes(*n as u32)))
+        // .bench("matrix_sort", ParameterizedBenchmark::new("matrix_sort", bench_matrix_sort, vec![100, 1000])
+        //        .throughput(|n| Throughput::Bytes(*n as u32)))
         ;
 }
 

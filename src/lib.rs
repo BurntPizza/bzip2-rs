@@ -8,6 +8,9 @@ extern crate proptest;
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 
+pub mod rle;
+
+
 pub fn bwt(data: &[u8]) -> (Vec<u8>, u32) {
     let n = data.len();
     if n == 0 { return (vec![], 0); }
@@ -319,6 +322,13 @@ mod tests {
             let test_data = matrix_sort(data).into_iter().map(|e| unsafe {*e}).collect::<Vec<_>>();
             let reference_data = naive_matrix_sort(data).into_iter().map(|e| data[e as usize]).collect::<Vec<_>>();;
             prop_assert_eq!(test_data, reference_data);
+        }
+
+        #[test]
+        fn test_initial_rle(ref data in bytes_regex(".+").unwrap()) {
+            let encoded = rle::initial_encode(data);
+            let decoded = rle::initial_decode(&encoded);
+            prop_assert_eq!(&decoded, data);
         }
     }
 
