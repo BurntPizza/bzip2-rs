@@ -39,20 +39,22 @@ fn bench_matrix_sort(b: &mut Bencher, size: &usize) {
 
 fn bench_initial_rle_encode(b: &mut Bencher, size: &usize) {
     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+    let mut buffer = Vec::with_capacity(data.len() * 2);
 
     b.iter(|| {
-        bzip2_rs::rle::initial_encode(&data[..])
+        buffer.clear();
+        bzip2_rs::rle::initial_encode(&data[..], &mut buffer)
     })
 }
 
-fn bench_initial_rle_decode(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-    let data: Vec<u8> = bzip2_rs::initial_rle_encode(&data);
+// fn bench_initial_rle_decode(b: &mut Bencher, size: &usize) {
+//     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+//     let data: Vec<u8> = bzip2_rs::initial_rle_encode(&data);
 
-    b.iter(|| {
-        bzip2_rs::rle::initial_decode(&data[..])
-    })
-}
+//     b.iter(|| {
+//         bzip2_rs::rle::initial_decode(&data[..])
+//     })
+// }
 
 fn main() {
     Criterion::default()

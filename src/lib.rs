@@ -326,9 +326,10 @@ mod tests {
 
         #[test]
         fn test_initial_rle(ref data in bytes_regex(".+").unwrap()) {
-            let encoded = rle::initial_encode(data);
-            let decoded = rle::initial_decode(&encoded);
-            prop_assert_eq!(&decoded, data);
+            let mut buffer = Vec::with_capacity(data.len());
+            let read = rle::initial_encode(data, &mut buffer);
+            let decoded = rle::initial_decode(&buffer);
+            prop_assert_eq!(&decoded[..], &data[..read]);
         }
     }
 

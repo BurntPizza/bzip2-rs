@@ -1,36 +1,47 @@
 
 use std::mem::*;
 use std::iter::*;
-use std::u32;
 
-pub fn initial_encode(data: &[u8]) -> Vec<u8> {
+// fill buffer up to capacity, returning i, the amount of data was consumed (&data[i..] is unconsumed)
+// TODO?: handle adding new data into a partially-filled buffer correctly?
+pub fn initial_encode(data: &[u8], buffer: &mut Vec<u8>) -> usize {
+    let limit = buffer.capacity() - buffer.len();
     let n = data.len();
-    if n == 0 { return vec![]; }
-    assert!(n <= u32::MAX as usize);
-
-    let mut output = Vec::with_capacity(1024);
-
+    let mut added = 0;
     let mut i = 0;
 
-    while i < n {
-        let b = data[i];
-        let mut run_len = 1;
+    while i < n && added < limit {
+        let remaining = limit - added;
 
-        while run_len < 256 && i + run_len < n && data[i + run_len] == b {
-            run_len += 1;
+        if remaining >= 5 {
+            // encode up to full run
+            let b = data[i];
+            let mut run_len = 1;
+            let pre_len = buffer.len();
+
+            while run_len < 256 && i + run_len < n && data[i + run_len] == b {
+                run_len += 1;
+            }
+
+            buffer.extend(repeat(b).take(run_len).take(4));
+
+            if run_len >= 4 {
+                debug_assert!(run_len <= 255);
+                buffer.push(run_len as u8 - 4);
+            }
+
+            added += buffer.len() - pre_len;
+            i += run_len;
+        } else {
+            let run_len = remaining.min(n - i);
+            buffer.extend(&data[i..i + run_len]);
+            i += run_len;
+            break;
         }
 
-        output.extend(repeat(b).take(run_len).take(4));
-
-        if run_len >= 4 {
-            debug_assert!(run_len <= 255);
-            output.push(run_len as u8 - 4);
-        }
-
-        i += run_len;
     }
 
-    output
+    return i;
 }
 
 pub fn initial_decode(encoded: &[u8]) -> Vec<u8> {
