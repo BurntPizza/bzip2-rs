@@ -9,7 +9,7 @@ use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 
 pub mod rle;
-
+pub mod mtf;
 
 pub fn bwt(data: &[u8]) -> (Vec<u8>, u32) {
     let n = data.len();
@@ -325,12 +325,19 @@ mod tests {
         }
 
         #[test]
-        fn test_initial_rle(ref data in bytes_regex(".+").unwrap()) {
-            let mut buffer = Vec::with_capacity(data.len());
-            let read = rle::initial_encode(data, &mut buffer);
-            let decoded = rle::initial_decode(&buffer);
-            prop_assert_eq!(&decoded[..], &data[..read]);
+        fn test_initial_rle_encode(ref data in bytes_regex(".+").unwrap()) {
+            // let mut encoder = rle::Encoder::new();
+            
         }
+
+        // #[test]
+        // fn test_initial_rle(ref data in bytes_regex(".+").unwrap()) {
+        //     let mut buffer = Vec::with_capacity(data.len());
+        //     let read = rle::initial_encode(data, &mut buffer);
+        //     let decoded = rle::initial_decode(&buffer);
+        //     println!("{:?}", data);
+        //     prop_assert_eq!(&decoded[..], &data[..read]);
+        // }
     }
 
     // #[test]

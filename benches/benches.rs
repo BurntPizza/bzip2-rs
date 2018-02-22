@@ -14,7 +14,10 @@ fn bench_ibwt(b: &mut Bencher, size: &usize) {
 }
 
 fn bench_bwt(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size * 2).collect();
+    let mut buffer = Vec::with_capacity(*size);
+    bzip2_rs::rle::initial_encode(&data, &mut buffer);
+    assert_eq!(buffer.len(), *size);
 
     b.iter(|| {
         bzip2_rs::bwt(&data[..])

@@ -2,46 +2,75 @@
 use std::mem::*;
 use std::iter::*;
 
-// fill buffer up to capacity, returning i, the amount of data was consumed (&data[i..] is unconsumed)
-// TODO?: handle adding new data into a partially-filled buffer correctly?
-pub fn initial_encode(data: &[u8], buffer: &mut Vec<u8>) -> usize {
-    let limit = buffer.capacity() - buffer.len();
-    let n = data.len();
-    let mut added = 0;
-    let mut i = 0;
+pub struct Encoder {
+    block: Vec<u8>,
+    max_size: usize,
+    in_len: usize,
+    in_char: u16,
+}
 
-    while i < n && added < limit {
-        let remaining = limit - added;
-
-        if remaining >= 5 {
-            // encode up to full run
-            let b = data[i];
-            let mut run_len = 1;
-            let pre_len = buffer.len();
-
-            while run_len < 256 && i + run_len < n && data[i + run_len] == b {
-                run_len += 1;
-            }
-
-            buffer.extend(repeat(b).take(run_len).take(4));
-
-            if run_len >= 4 {
-                debug_assert!(run_len <= 255);
-                buffer.push(run_len as u8 - 4);
-            }
-
-            added += buffer.len() - pre_len;
-            i += run_len;
-        } else {
-            let run_len = remaining.min(n - i);
-            buffer.extend(&data[i..i + run_len]);
-            i += run_len;
-            break;
+impl Encoder {
+    pub fn new(block_size: usize) -> Self {
+        Encoder {
+            block: Vec::with_capacity(block_size),
+            max_size: block_size,
+            in_len: 0,
+            in_char: 256,
         }
-
     }
 
-    return i;
+    pub fn encode(&mut self, data: &[u8]) {
+        let mut i = 0;
+
+        while i < data.len() {
+            if self.block.len() >= self.max_size {
+                break;
+            }
+
+            let b = data[i] as u16;
+
+            if b != self.in_char && self.in_len == 1 {
+                let ib = self.in_char as u8;
+                // update crc ib
+                self.block.push(ib);
+                self.in_char = b;
+            } else if b != self.in_char || self.in_len == 255 {
+                if self.in_char < 256 {
+                    self.add_pair();
+                }
+                self.in_char = b;
+                self.in_len = 1;
+            } else {
+                self.in_len += 1;
+            }
+            i += 1;
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.in_char > 255 || self.in_len == 0
+    }
+
+    fn flush(&mut self) {
+        if self.in_char < 256 {
+            self.add_pair();
+        }
+    }
+
+    fn add_pair(&mut self) {
+        debug_assert!(self.in_len > 0);
+
+        let ch = self.in_char as u8;
+
+        for _ in 0..self.in_len {
+            // update crc ch
+        }
+
+        self.block.extend(repeat(ch).take(self.in_len).take(4));
+        if self.in_len >= 4 {
+            self.block.push(self.in_len as u8 - 4);
+        }
+    }
 }
 
 pub fn initial_decode(encoded: &[u8]) -> Vec<u8> {
@@ -49,10 +78,11 @@ pub fn initial_decode(encoded: &[u8]) -> Vec<u8> {
     debug_assert_eq!(align_of::<Chunk>(), 1);
 
     let n = encoded.len();
+    let s = size_of::<Chunk>();
     let mut output = Vec::with_capacity(1024);
 
     let mut i = 0;
-    while i + size_of::<Chunk>() < n {
+    while i + s < n - 1 {
         let (a, b, c, d) = unsafe { *(encoded.as_ptr().offset(i as isize) as *const Chunk) };
         let mut run_len = 1;
         if a == b {
@@ -70,6 +100,18 @@ pub fn initial_decode(encoded: &[u8]) -> Vec<u8> {
 
         i += run_len;
         output.extend(repeat(a).take(run_len));
+    }
+    println!("debug: {:?}", &output[..]);
+    println!("encoded: {:?}", &encoded[i..]);
+
+    if i < n && output.len() >= 4 {
+        let on = output.len();
+        let b = *output.last().unwrap();
+        let b = [b; 4];
+        if &output[on - 4..] == &b[..] && encoded[i] == 0 {
+            // skip zero
+            i += 1;
+        }
     }
 
     output.reserve_exact(n - i);
