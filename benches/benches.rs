@@ -2,7 +2,7 @@
 extern crate bzip2_rs;
 extern crate criterion;
 
-use criterion::{Bencher, Criterion, ParameterizedBenchmark, Throughput};
+use criterion::{Bencher, Criterion, Benchmark, ParameterizedBenchmark, Throughput};
 
 fn bench_ibwt(b: &mut Bencher, size: &usize) {
     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
@@ -13,16 +13,16 @@ fn bench_ibwt(b: &mut Bencher, size: &usize) {
     })
 }
 
-fn bench_bwt(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size * 2).collect();
-    let mut buffer = Vec::with_capacity(*size);
-    bzip2_rs::rle::initial_encode(&data, &mut buffer);
-    assert_eq!(buffer.len(), *size);
+// fn bench_bwt(b: &mut Bencher, size: &usize) {
+//     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size * 2).collect();
+//     let mut buffer = Vec::with_capacity(*size);
+//     bzip2_rs::rle::initial_encode(&data, &mut buffer);
+//     assert_eq!(buffer.len(), *size);
 
-    b.iter(|| {
-        bzip2_rs::bwt(&data[..])
-    })
-}
+//     b.iter(|| {
+//         bzip2_rs::bwt(&data[..])
+//     })
+// }
 
 fn bench_naive_matrix_sort(b: &mut Bencher, size: &usize) {
     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
@@ -40,13 +40,33 @@ fn bench_matrix_sort(b: &mut Bencher, size: &usize) {
     })
 }
 
-fn bench_initial_rle_encode(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-    let mut buffer = Vec::with_capacity(data.len() * 2);
+// fn bench_initial_rle_encode(b: &mut Bencher, size: &usize) {
+//     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
+//     let mut buffer = Vec::with_capacity(data.len() * 2);
+
+//     b.iter(|| {
+//         buffer.clear();
+//         bzip2_rs::rle::initial_encode(&data[..], &mut buffer)
+//     })
+// }
+
+const MTF_SIZE: usize = 100_000;
+
+fn bench_mtf_encode(b: &mut Bencher) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(MTF_SIZE).collect();
 
     b.iter(|| {
-        buffer.clear();
-        bzip2_rs::rle::initial_encode(&data[..], &mut buffer)
+        bzip2_rs::mtf::encode(&data)
+    })
+}
+
+
+fn bench_mtf_decode(b: &mut Bencher) {
+    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(MTF_SIZE).collect();
+    let data = bzip2_rs::mtf::encode(&data);
+
+    b.iter(|| {
+        bzip2_rs::mtf::decode(&data)
     })
 }
 
@@ -61,8 +81,12 @@ fn bench_initial_rle_encode(b: &mut Bencher, size: &usize) {
 
 fn main() {
     Criterion::default()
-        .bench("initial_rle_encode", ParameterizedBenchmark::new("initial_rle_encode", bench_initial_rle_encode, vec![100_000])
-               .throughput(|n| Throughput::Bytes(*n as u32)))
+        .bench("mtf", Benchmark::new("encode", bench_mtf_encode)
+               .throughput(Throughput::Bytes(MTF_SIZE as _)))
+        .bench("mtf", Benchmark::new("decode", bench_mtf_decode)
+               .throughput(Throughput::Bytes(MTF_SIZE as _)))
+        // .bench("initial_rle_encode", ParameterizedBenchmark::new("initial_rle_encode", bench_initial_rle_encode, vec![100_000])
+        //        .throughput(|n| Throughput::Bytes(*n as u32)))
         // .bench("initial_rle_decode", ParameterizedBenchmark::new("initial_rle_decode", bench_initial_rle_decode, vec![100_000])
         //        .throughput(|n| Throughput::Bytes(*n as u32)))
 
