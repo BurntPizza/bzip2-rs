@@ -85,6 +85,7 @@ fn main() {
                .throughput(Throughput::Bytes(MTF_SIZE as _)))
         .bench("mtf", Benchmark::new("decode", bench_mtf_decode)
                .throughput(Throughput::Bytes(MTF_SIZE as _)))
+
         // .bench("initial_rle_encode", ParameterizedBenchmark::new("initial_rle_encode", bench_initial_rle_encode, vec![100_000])
         //        .throughput(|n| Throughput::Bytes(*n as u32)))
         // .bench("initial_rle_decode", ParameterizedBenchmark::new("initial_rle_decode", bench_initial_rle_decode, vec![100_000])

@@ -8,15 +8,25 @@ pub fn encode(data: &[u8]) -> Vec<u8> {
         table[i] = i as u8;
     }
 
-    let mut output = Vec::with_capacity(data.len());
+    let mut output  = Vec::with_capacity(data.len());
+    unsafe { output.set_len(data.len()); }
 
-    for &byte in data {
-        let idx = table.iter().position(|e| *e == byte).unwrap();
-        for i in (1..idx + 1).rev() {
-            table[i] = table[i - 1];
+    for (byte, ptr) in data.iter().cloned().zip(output.iter_mut()) {
+        // fast path
+        if table[0] == byte {
+            *ptr = 0;
+            continue;
+        }
+
+        let idx = (&table[1..]).iter().position(|e| *e == byte).map(|i| i + 1).unwrap_or(0);
+        *ptr = idx as u8;
+
+        unsafe {
+            let src = table.as_ptr();
+            let dst = table.as_mut_ptr().offset(1);
+            ptr::copy(src, dst, idx);
         }
         table[0] = byte;
-        output.push(idx as u8);
     }
 
     output
@@ -30,15 +40,21 @@ pub fn decode(data: &[u8]) -> Vec<u8> {
     }
 
     let mut output = Vec::with_capacity(data.len());
+    unsafe { output.set_len(data.len()); }
 
-    for &idx in data {
+    for (idx, ptr) in data.iter().cloned().zip(output.iter_mut()) {
         let idx = idx as usize;
         let byte = table[idx];
-        for i in (1..idx + 1).rev() {
-            table[i] = table[i - 1];
+        *ptr = byte;
+
+        if idx == 0 { continue; } // fast path
+
+        unsafe {
+            let src = table.as_ptr();
+            let dst = table.as_mut_ptr().offset(1);
+            ptr::copy(src, dst, idx);
         }
         table[0] = byte;
-        output.push(byte);
     }
 
     output
