@@ -1,106 +1,127 @@
 
 extern crate bzip2_rs;
-extern crate criterion;
+// extern crate criterion;
 
-use criterion::{Bencher, Criterion, Benchmark, ParameterizedBenchmark, Throughput};
+// use criterion::{Bencher, Criterion, Benchmark, ParameterizedBenchmark, Throughput};
 
-fn bench_ibwt(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-    let (transformed, start) = bzip2_rs::bwt(&data[..]);
+use std::time::*;
 
-    b.iter(|| {
-        bzip2_rs::ibwt(&transformed[..], start)
-    })
+const BWT_SIZE: usize = 100_000;
+
+fn bench<F: Fn() -> Vec<u8>>(name: &str, size: usize, f: F) {
+    println!("\n{}", name);
+    let mut _v = vec![];
+
+    let mut time = Duration::from_secs(0);
+    let mut iterations = 0;
+    loop {
+        let start = Instant::now();
+        _v = f();
+        time += start.elapsed();
+        iterations += 1;
+        if time > Duration::from_secs(3) { break; }
+    }
+    let s = time.as_secs() as f64 + (time.subsec_nanos() as f64 / 1_000_000_000.0);
+    let ti = s / iterations as f64;
+    let mut tif = format!("{:.3} s", ti);
+    if ti < 1.0 {
+        tif = format!("{:.3} ms", ti * 1000.0);
+    }
+    println!("Iterations: {}", iterations);
+    println!("T/I: {}", tif);
+    let t = (size as f64 / (1024 * 1024) as f64) / ti;
+    let tf = if t >= 1.0 { format!("{:.3} Mb/s", t) } else { format!("{:.3} Kb/s", t * 1024.0) };
+    println!("Throughput: {}", tf);
 }
 
-// fn bench_bwt(b: &mut Bencher, size: &usize) {
-//     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size * 2).collect();
-//     let mut buffer = Vec::with_capacity(*size);
-//     bzip2_rs::rle::initial_encode(&data, &mut buffer);
-//     assert_eq!(buffer.len(), *size);
+fn bench_bwt_mkqs_text() {
+    let mut enc = bzip2_rs::rle::Encoder::new(BWT_SIZE);
+    let data = text_data(BWT_SIZE);
+    while enc.encode(&data) != 0 {}
+    let data = enc.finish();
 
-//     b.iter(|| {
-//         bzip2_rs::bwt(&data[..])
-//     })
-// }
-
-fn bench_naive_matrix_sort(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-
-    b.iter(|| {
-        bzip2_rs::naive_matrix_sort(&data[..])
-    })
-}
-
-fn bench_matrix_sort(b: &mut Bencher, size: &usize) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-
-    b.iter(|| {
-        bzip2_rs::matrix_sort(&data[..])
-    })
-}
-
-// fn bench_initial_rle_encode(b: &mut Bencher, size: &usize) {
-//     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-//     let mut buffer = Vec::with_capacity(data.len() * 2);
-
-//     b.iter(|| {
-//         buffer.clear();
-//         bzip2_rs::rle::initial_encode(&data[..], &mut buffer)
-//     })
-// }
-
-const MTF_SIZE: usize = 100_000;
-
-fn bench_mtf_encode(b: &mut Bencher) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(MTF_SIZE).collect();
-
-    b.iter(|| {
-        bzip2_rs::mtf::encode(&data)
-    })
+    bench("BWT_mkqs_text", BWT_SIZE, || bzip2_rs::bwt(&data).0);
 }
 
 
-fn bench_mtf_decode(b: &mut Bencher) {
-    let data: Vec<u8> = TEXT.iter().cloned().cycle().take(MTF_SIZE).collect();
-    let data = bzip2_rs::mtf::encode(&data);
+fn bench_bwt_mkqs_binary() {
+    let mut enc = bzip2_rs::rle::Encoder::new(BWT_SIZE);
+    let data = binary_data(BWT_SIZE);
+    while enc.encode(&data) != 0 {}
+    let data = enc.finish();
 
-    b.iter(|| {
-        bzip2_rs::mtf::decode(&data)
-    })
+    bench("BWT_mkqs_binary", BWT_SIZE, || bzip2_rs::bwt(&data).0);
 }
 
-// fn bench_initial_rle_decode(b: &mut Bencher, size: &usize) {
-//     let data: Vec<u8> = TEXT.iter().cloned().cycle().take(*size).collect();
-//     let data: Vec<u8> = bzip2_rs::initial_rle_encode(&data);
+fn bench_bwt_sa_naive_text() {
+    let mut enc = bzip2_rs::rle::Encoder::new(BWT_SIZE);
+    let data = text_data(BWT_SIZE);
+    while enc.encode(&data) != 0 {}
+    let data = enc.finish();
 
-//     b.iter(|| {
-//         bzip2_rs::rle::initial_decode(&data[..])
-//     })
-// }
+    bench("bwt_sa_naive_text", BWT_SIZE, || bzip2_rs::bwt_sa_naive(&data).0);
+}
+
+
+fn bench_bwt_sa_naive_binary() {
+    let mut enc = bzip2_rs::rle::Encoder::new(BWT_SIZE);
+    let data = binary_data(BWT_SIZE);
+    while enc.encode(&data) != 0 {}
+    let data = enc.finish();
+
+    bench("bwt_sa_naive_binary", BWT_SIZE, || bzip2_rs::bwt_sa_naive(&data).0);
+}
+
+
+fn text_data(size: usize) -> Vec<u8> {
+    TEXT.iter().cloned().cycle().take(size).collect()
+}
+
+fn binary_data(size: usize) -> Vec<u8> {
+    use std::fs::File;
+    use std::io::prelude::*;
+
+    let mut f = File::open("/usr/bin/wget").unwrap();
+    let f_size = f.metadata().unwrap().len() as usize;
+    let mut v = Vec::with_capacity(size);
+    unsafe { v.set_len(size); }
+    f.read_exact(&mut v[..size.min(f_size)]).unwrap();
+    if f_size < size {
+        v = v.into_iter().cycle().take(size).collect();
+    }
+    v
+}
+
+pub fn histogram(data: &[u8]) {
+    let sum: u64 = data.iter().map(|b| *b as u64).sum();
+    let pdf: Vec<f64> = data.iter().map(|c| *c as f64 / sum as f64).collect();
+    let mut max = 0.0;
+    for p in &pdf {
+        if max < *p { max = *p; }
+    }
+    for i in 0..256 {
+        let n = (pdf[i] / max * 100.0).round() as usize;
+        if n > 0 {
+            println!("{:3}: {:5.2}% | {}", i, pdf[i], ::std::iter::repeat('#').take(n).collect::<String>());
+        }
+    }
+}
 
 fn main() {
-    Criterion::default()
-        .bench("mtf", Benchmark::new("encode", bench_mtf_encode)
-               .throughput(Throughput::Bytes(MTF_SIZE as _)))
-        .bench("mtf", Benchmark::new("decode", bench_mtf_decode)
-               .throughput(Throughput::Bytes(MTF_SIZE as _)))
+    bench_bwt_sa_naive_text();
+    bench_bwt_sa_naive_binary();
 
-        // .bench("initial_rle_encode", ParameterizedBenchmark::new("initial_rle_encode", bench_initial_rle_encode, vec![100_000])
-        //        .throughput(|n| Throughput::Bytes(*n as u32)))
-        // .bench("initial_rle_decode", ParameterizedBenchmark::new("initial_rle_decode", bench_initial_rle_decode, vec![100_000])
-        //        .throughput(|n| Throughput::Bytes(*n as u32)))
+    bench_bwt_mkqs_text();
+    bench_bwt_mkqs_binary();
 
-        // .bench("bwt", ParameterizedBenchmark::new("bwt", bench_bwt, vec![100, 1000])
-        //        .throughput(|n| Throughput::Bytes(*n as u32)))
-        // .bench("ibwt", ParameterizedBenchmark::new("ibwt", bench_ibwt, vec![1000, 10_000])
-        //        .throughput(|n| Throughput::Bytes(*n as u32)))
+    // Criterion::default()
+    //     .bench("bwt_mkqs", Benchmark::new("text", bench_bwt_mkqs_text)
+    //            .throughput(Throughput::Bytes(BWT_SIZE as _))
+    //     .bench("bwt_mkqs", Benchmark::new("binary", bench_bwt_mkqs_binary)
+    //            .throughput(Throughput::Bytes(BWT_SIZE as _))
+    //     ;
 
-        // .bench("naive_matrix_sort", ParameterizedBenchmark::new("naive_matrix_sort", bench_naive_matrix_sort, vec![100, 1000])
-        //        .throughput(|n| Throughput::Bytes(*n as u32)))
-        // .bench("matrix_sort", ParameterizedBenchmark::new("matrix_sort", bench_matrix_sort, vec![100, 1000])
-        //        .throughput(|n| Throughput::Bytes(*n as u32)))
-        ;
+    
 }
 
 const TEXT: &[u8] = b"

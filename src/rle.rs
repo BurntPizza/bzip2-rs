@@ -19,7 +19,7 @@ impl Encoder {
         }
     }
 
-    pub fn encode(&mut self, data: &[u8]) {
+    pub fn encode(&mut self, data: &[u8]) -> usize {
         let mut i = 0;
 
         while i < data.len() {
@@ -45,6 +45,13 @@ impl Encoder {
             }
             i += 1;
         }
+
+        i
+    }
+
+    pub fn finish(mut self) -> Vec<u8> {
+        self.flush();
+        self.block
     }
 
     fn is_empty(&self) -> bool {

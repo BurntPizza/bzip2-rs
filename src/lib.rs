@@ -11,6 +11,58 @@ use std::cmp::Ordering::*;
 pub mod rle;
 pub mod mtf;
 
+fn sa(data: Vec<u8>) -> Vec<u32> {
+    unimplemented!()
+}
+
+pub fn bwt_sa(data: &[u8]) -> (Vec<u8>, u32) {
+    let n = data.len();
+    if n == 0 { return (vec![], 0); }
+    assert!(n <= std::u32::MAX as usize);
+
+    let mut d2 = data.to_owned();
+    d2.extend_from_slice(data);
+    let sa = sa(d2);
+    
+    let mut idx = 0;
+    let last_col: Vec<u8> = sa.into_iter().filter(|i| *i < n as u32).enumerate().map(|(row, i)| {
+        if i == 0 { idx = row as u32; }
+        let mut i = i as usize + n - 1;
+        if i >= n { i -= n; }
+        data[i]
+    }).collect();
+
+    (last_col, idx)
+}
+
+fn sa_naive(data: &[u8]) -> Vec<u32> {
+    let mut sa: Vec<_> = (0..data.len() as u32).collect();
+    sa.sort_unstable_by_key(|i| &data[*i as usize..]);
+    sa
+}
+
+pub fn bwt_sa_naive(data: &[u8]) -> (Vec<u8>, u32) {
+    let n = data.len();
+    if n == 0 { return (vec![], 0); }
+    assert!(n <= std::u32::MAX as usize);
+
+    let sa = {
+        let mut d2 = data.to_owned();
+        d2.extend_from_slice(data);
+        sa_naive(&d2)
+    };
+    
+    let mut idx = 0;
+    let last_col: Vec<u8> = sa.into_iter().filter(|i| *i < n as u32).enumerate().map(|(row, i)| {
+        if i == 0 { idx = row as u32; }
+        let mut i = i as usize + n - 1;
+        if i >= n { i -= n; }
+        data[i]
+    }).collect();
+
+    (last_col, idx)
+}
+
 pub fn bwt(data: &[u8]) -> (Vec<u8>, u32) {
     let n = data.len();
     if n == 0 { return (vec![], 0); }
@@ -116,6 +168,10 @@ pub fn naive_matrix_sort(data: &[u8]) -> Vec<u32> {
     matrix
 }
 
+fn median(a: u8, b: u8, c: u8) -> u8 {
+    a.max(b).min(c)
+}
+
 pub fn matrix_sort(data: &[u8]) -> Vec<*const u8> {
     type Ptr = *const u8;
 
@@ -129,10 +185,6 @@ pub fn matrix_sort(data: &[u8]) -> Vec<*const u8> {
     }
 
     fn pivot(a: &mut [Ptr], d: isize, s: usize, b: usize) -> u8 {
-        fn median(a: u8, b: u8, c: u8) -> u8 {
-            a.max(b).min(c)
-        }
-
         fn med3(a: &mut [Ptr], d: isize, s: usize, b: usize) -> u8 {
             let li = 0;
             let mi = a.len() / 2;
@@ -198,24 +250,30 @@ pub fn matrix_sort(data: &[u8]) -> Vec<*const u8> {
         }
     }
 
-    fn sort_(a: &mut [Ptr], d: isize, s: usize, e: usize) {
-        if d as usize >= s { return; }
-        if a.len() < 10 { return isort(a, d, s, e) }
-        let p = pivot(a, d, s, e);
-        let (i, j) = partition(a, d, p, s, e);
-        sort_(&mut a[..i], d, s, e);
-        sort_(&mut a[i..j], d + 1, s, e);
-        sort_(&mut a[j..], d, s, e);
-    }
+    let n = data.len();
+    let base = data.as_ptr();
+    let mut matrix = (0..n).map(|i| unsafe { base.offset(i as isize) }).collect::<Vec<_>>();
 
-    unsafe {
-        let n = data.len();
-        let base = data.as_ptr();
-        let mut matrix = (0..n).map(|i| base.offset(i as isize)).collect::<Vec<_>>();
-        sort_(&mut matrix[..], 0, n, base as usize + n);
+    let s = n;
+    let e = base as usize + n;
+    {
+        let mut stack = vec![(&mut matrix[..], 0)];
 
-        matrix
+        while let Some((slice, depth)) = stack.pop() {
+            if depth as usize >= s { continue; }
+            if slice.len() < 10 { isort(slice, depth, s, e); continue; }
+            let p = pivot(slice, depth, s, e);
+            let (i, j) = partition(slice, depth, p, s, e);
+
+            let (first, rest) = slice.split_at_mut(i);
+            let (second, third) = rest.split_at_mut(j - i);
+
+            stack.push((first, depth));
+            stack.push((second, depth + 1));
+            stack.push((third, depth));
+        }
     }
+    matrix
 }
 
 #[cfg(test)]
@@ -266,17 +324,55 @@ pub fn ibwt_ref(data: &[u8], start: u32) -> Vec<u8> {
     std::mem::replace(&mut matrix[start as usize], Default::default()).into()
 }
 
+fn insertion_sort<T, F>(slice: &mut [T], cmp: F)
+    where T: Copy,
+          F: Fn(T, T) -> Ordering
+{
+    let mut i = 1;
+    while i < slice.len() {
+        let mut j = i;
+        while j > 0 && cmp(slice[j - 1], slice[j]) == Greater {
+            slice.swap(j, j - 1);
+            j -= 1;
+        }
+        i += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::io::prelude::*;
-    use bzip2::Compression;
-    use bzip2::read::*;
+    // use std::io::prelude::*;
+    // use bzip2::Compression;
+    // use bzip2::read::*;
 
     use proptest::string::*;
 
     use *;
 
     proptest! {
+        #[ignore]
+        #[test]
+        fn test_sa(ref data in bytes_regex(".*").unwrap()) {
+            let sa1 = sa(data.to_owned());
+            let sa_ref = sa_naive(data);
+            prop_assert_eq!(sa1, sa_ref)
+        }
+
+        #[test]
+        fn test_bwt_sa_naive(ref data in bytes_regex(".*").unwrap()) {
+            let (bwt, idx) = bwt_sa_naive(&data[..]);
+            let ibwt = ibwt_ref(&bwt[..], idx);
+            prop_assert_eq!(&ibwt[..], &data[..])
+        }
+
+        #[ignore]
+        #[test]
+        fn test_bwt_sa(ref data in bytes_regex(".*").unwrap()) {
+            let (bwt, idx) = bwt_sa(&data[..]);
+            let ibwt = ibwt_ref(&bwt[..], idx);
+            prop_assert_eq!(&ibwt[..], &data[..])
+        }
+
         #[test]
         fn bwt_reference_round_trip(ref data in bytes_regex(".*").unwrap()) {
             let (bwt, idx) = bwt_ref(&data[..]);
